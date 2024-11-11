@@ -56,7 +56,8 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
-		Addr:        "default:oHdhc4BHqoJieH2KzZwbBlTzskPFtd5E@redis-12567.c15.us-east-1-4.ec2.redns.redis-cloud.com:12567",
+		Addr:        "redis-12567.c15.us-east-1-4.ec2.redns.redis-cloud.com:12567",
+		Password:    "oHdhc4BHqoJieH2KzZwbBlTzskPFtd5E",
 		MaxRetries:  3,
 		PoolTimeout: 30 * time.Second,
 	})
@@ -70,7 +71,7 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Subscribe to Redis channel
-	pubsub := rdb.Subscribe(ctx, "game_evo_database_chat")
+	pubsub := rdb.Subscribe(ctx, "game_evo_dev.chat")
 	defer pubsub.Close()
 
 	// Send initial connection established message
