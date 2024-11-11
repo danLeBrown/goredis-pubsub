@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
+
+	"os"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -18,8 +21,14 @@ type Message struct {
 }
 
 func main() {
+	port := os.Getenv("PORT")
+
+	if port == "" {
+		port = "8080"
+	}
+
 	http.HandleFunc("/stream", handleStream)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
 
 func handleStream(w http.ResponseWriter, r *http.Request) {
