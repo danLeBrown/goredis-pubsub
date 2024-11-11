@@ -30,7 +30,7 @@ func main() {
 	redisPassword = envFile["REDIS_PASSWORD"]
 
 	if redisAddr == "" {
-		redisAddr = os.Getenv("REDIS_URL")
+		redisAddr = os.Getenv("REDIS_ADDR")
 	}
 
 	if redisPassword == "" {
