@@ -10,6 +10,7 @@ import (
 
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -20,7 +21,22 @@ type Message struct {
 	ConversationID int    `json:"conversation_id"`
 }
 
+var redisAddr string
+var redisPassword string
+
 func main() {
+	envFile, _ := godotenv.Read(".env")
+	redisAddr = envFile["REDIS_ADDR"]
+	redisPassword = envFile["REDIS_PASSWORD"]
+
+	if redisAddr == "" {
+		redisAddr = os.Getenv("REDIS_URL")
+	}
+
+	if redisPassword == "" {
+		redisPassword = os.Getenv("REDIS_PASSWORD")
+	}
+
 	port := os.Getenv("PORT")
 
 	if port == "" {
@@ -54,10 +70,11 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 		log.Println("Client disconnected")
 	}()
 
+	// "redis-12567.c15.us-east-1-4.ec2.redns.redis-cloud.com:12567"
 	// Connect to Redis
 	rdb := redis.NewClient(&redis.Options{
-		Addr:        "redis-12567.c15.us-east-1-4.ec2.redns.redis-cloud.com:12567",
-		Password:    "oHdhc4BHqoJieH2KzZwbBlTzskPFtd5E",
+		Addr:        redisAddr,
+		Password:    redisPassword,
 		MaxRetries:  3,
 		PoolTimeout: 30 * time.Second,
 	})
