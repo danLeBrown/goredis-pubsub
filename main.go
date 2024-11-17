@@ -194,7 +194,7 @@ func handleSSEStream(ctx context.Context, w http.ResponseWriter, pubsub *redis.P
 				continue
 			}
 
-			if err := sendSSEMessage(w, "message", msg.Payload); err != nil {
+			if err := sendSSEMessage(w, config.eventType, msg.Payload); err != nil {
 				log.Printf("Failed to send %s: %v", config.eventType, err)
 				return
 			}
