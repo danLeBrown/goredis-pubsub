@@ -7,17 +7,43 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
+	"strconv"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 )
+
+type Claims struct {
+	jwt.RegisteredClaims
+	Role     string `json:"role"`
+	UserID   string `json:"uid"`
+	PlayerID string `json:"pid"`
+}
+
+type AuthConfig struct {
+	secretKey []byte
+}
+
+type PlayerMessage struct {
+	Participants []int   `json:"participants"`
+	Data         Message `json:"data"`
+}
 
 type Message struct {
 	ID             int    `json:"id"`
 	SenderID       int    `json:"sender_id"`
 	Body           string `json:"body"`
 	ConversationID int    `json:"conversation_id"`
+}
+
+// the notification payload could be different depending on the key
+type Notification[T any] struct {
+	Type     string `json:"type"`
+	Data     T      `json:"data"`
+	PlayerID string `json:"player_id"`
 }
 
 type InAppNotification struct {
@@ -56,8 +82,11 @@ type RedisConfig struct {
 }
 
 func main() {
-	redisConfig := loadConfig()
-	redisClient := newRedisClient(redisConfig)
+	redisConfig := &RedisConfig{}
+	authConfig := &AuthConfig{}
+	loadConfig(redisConfig, authConfig)
+
+	redisClient := newRedisClient(*redisConfig)
 	defer redisClient.Close()
 
 	// Configure message stream
@@ -96,23 +125,83 @@ func main() {
 		},
 	}
 
+	playerNotificationConfig := &SSEConfig{
+		redisClient: redisClient,
+		channelName: "game_evo_dev.player.notifications",
+		eventType:   "notification",
+		unmarshaller: func(data []byte) (interface{}, error) {
+			var notification Notification[any]
+			err := json.Unmarshal(data, &notification)
+			return notification, err
+		},
+	}
+
+	playerMessageConfig := &SSEConfig{
+		redisClient: redisClient,
+		channelName: "game_evo_dev.player.messages",
+		eventType:   "message",
+		unmarshaller: func(data []byte) (interface{}, error) {
+			var notification PlayerMessage
+			err := json.Unmarshal(data, &notification)
+			return notification, err
+		},
+	}
+
+	// conversationConfig := &SSEConfig{
+	// 	redisClient: redisClient,
+	// 	channelName: "game_evo_dev.conversation",
+	// 	eventType:   "conversation",
+	// 	unmarshaller: func(data []byte) (interface{}, error) {
+	// 		var friendRequest FriendRequest
+	// 		err := json.Unmarshal(data, &friendRequest)
+	// 		return friendRequest, err
+	// 	},
+	// }
+
 	// Set up routes
-	http.HandleFunc("/stream/messages", createSSEHandler(messageConfig))
-	http.HandleFunc("/stream/notifications", createSSEHandler(notificationConfig))
-	http.HandleFunc("/stream/friend-requests", createSSEHandler(friendRequestConfig))
+	http.HandleFunc("/stream/messages", createSSEHandler(messageConfig, authConfig))
+	http.HandleFunc("/stream/messages/conversations", createSSEHandler(messageConfig, authConfig))
+	http.HandleFunc("/stream/notifications", createSSEHandler(notificationConfig, authConfig))
+	http.HandleFunc("/stream/notifications/friend-requests", createSSEHandler(notificationConfig, authConfig))
+	http.HandleFunc("/stream/friend-requests", createSSEHandler(friendRequestConfig, authConfig))
+	http.HandleFunc("/stream/player/notifications", createSSEHandler(playerNotificationConfig, authConfig))
+	http.HandleFunc("/stream/player/messages", createSSEHandler(playerMessageConfig, authConfig))
 
 	port := getEnvOrDefault("PORT", "8080")
 	log.Printf("Server starting on port %s", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
 
-func loadConfig() RedisConfig {
+func validateToken(tokenString string, config *AuthConfig) (*Claims, error) {
+	// For debugging
+	// log.Printf("Validating token: %s", tokenString)
+	// log.Printf("Using secret: %s", string(config.secretKey))
+
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return config.secretKey, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, fmt.Errorf("invalid token")
+}
+
+func loadConfig(redisConfig *RedisConfig, authConfig *AuthConfig) {
 	envFile, _ := godotenv.Read(".env")
 
-	return RedisConfig{
-		addr:     getEnvOrFileValue(envFile, "REDIS_ADDR"),
-		password: getEnvOrFileValue(envFile, "REDIS_PASSWORD"),
-	}
+	redisConfig.addr = getEnvOrFileValue(envFile, "REDIS_ADDR")
+	redisConfig.password = getEnvOrFileValue(envFile, "REDIS_PASSWORD")
+
+	authConfig.secretKey = []byte(getEnvOrFileValue(envFile, "STREAM_SECRET"))
 }
 
 func getEnvOrFileValue(envFile map[string]string, key string) string {
@@ -138,8 +227,47 @@ func newRedisClient(config RedisConfig) *redis.Client {
 	})
 }
 
-func createSSEHandler(config *SSEConfig) http.HandlerFunc {
+func createSSEHandler(config *SSEConfig, authConfig *AuthConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Get token from query param
+		tokenString := r.URL.Query().Get("token")
+		if tokenString == "" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		claims, err := validateToken(tokenString, authConfig)
+		log.Printf("Error: %v", err)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		userID := r.URL.Query().Get("uid")
+		if userID == "" {
+			http.Error(w, "Unprocessable entity", http.StatusUnprocessableEntity)
+			return
+		}
+
+		if claims.UserID != userID {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		playerID := r.URL.Query().Get("pid")
+		if playerID == "" && claims.Role == "u" {
+			http.Error(w, "Unprocessable entity", http.StatusUnprocessableEntity)
+			return
+		}
+
+		if claims.PlayerID != playerID && claims.Role == "u" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// log the claims
+		log.Printf("Claims: %v", claims)
+
 		if !isSSESupported(r) {
 			http.Error(w, "SSE not supported", http.StatusNotAcceptable)
 			return
@@ -171,11 +299,11 @@ func createSSEHandler(config *SSEConfig) http.HandlerFunc {
 			return
 		}
 
-		handleSSEStream(ctx, w, pubsub, config)
+		handleSSEStream(ctx, w, pubsub, config, playerID)
 	}
 }
 
-func handleSSEStream(ctx context.Context, w http.ResponseWriter, pubsub *redis.PubSub, config *SSEConfig) {
+func handleSSEStream(ctx context.Context, w http.ResponseWriter, pubsub *redis.PubSub, config *SSEConfig, playerID string) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -189,16 +317,71 @@ func handleSSEStream(ctx context.Context, w http.ResponseWriter, pubsub *redis.P
 				return
 			}
 		case msg := <-pubsub.Channel():
-			if _, err := config.unmarshaller([]byte(msg.Payload)); err != nil {
-				log.Printf("Failed to unmarshal %s: %v", config.eventType, err)
-				continue
-			}
+			switch config.eventType {
+			case "notification":
+				handlePlayerNotificationStream(w, config, msg, playerID)
+			case "message":
+				handlePlayerMessageStream(w, config, msg, playerID)
+			default:
+				_, err := config.unmarshaller([]byte(msg.Payload))
+				if err != nil {
+					log.Printf("Failed to unmarshal %s: %v", config.eventType, err)
+					continue
+				}
 
-			if err := sendSSEMessage(w, config.eventType, msg.Payload); err != nil {
-				log.Printf("Failed to send %s: %v", config.eventType, err)
-				return
+				if err := sendSSEMessage(w, config.eventType, msg.Payload); err != nil {
+					log.Printf("Failed to send %s: %v", config.eventType, err)
+					return
+				}
 			}
 		}
+	}
+}
+
+func handlePlayerNotificationStream(w http.ResponseWriter, config *SSEConfig, msg *redis.Message, playerID string) {
+	var notification struct {
+		PlayerID string `json:"player_id"`
+		Type     string `json:"type"`
+	}
+
+	err := json.Unmarshal([]byte(msg.Payload), &notification)
+	if err != nil {
+		log.Printf("Failed to unmarshal %s: %v", config.eventType, err)
+		return
+	}
+
+	if notification.PlayerID != playerID {
+		return
+	}
+
+	if err := sendSSEMessage(w, notification.Type, msg.Payload); err != nil {
+
+		log.Printf("Failed to send %s: %v", config.eventType, err)
+		return
+	}
+}
+
+func handlePlayerMessageStream(w http.ResponseWriter, config *SSEConfig, msg *redis.Message, playerID string) {
+	var message PlayerMessage
+	err := json.Unmarshal([]byte(msg.Payload), &message)
+	if err != nil {
+		log.Printf("Failed to unmarshal %s: %v", config.eventType, err)
+		return
+	}
+
+	participantID, err := strconv.Atoi(playerID)
+	if err != nil {
+		log.Printf("Failed to convert playerID to int: %v", err)
+		return
+	}
+
+	if !slices.Contains(message.Participants, participantID) {
+		return
+	}
+
+	if err := sendSSEMessage(w, config.eventType, msg.Payload); err != nil {
+		log.Printf("Failed to send %s: %v", config.eventType, err)
+		return
 	}
 }
 
