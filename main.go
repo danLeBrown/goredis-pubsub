@@ -79,6 +79,7 @@ type SSEConfig struct {
 type RedisConfig struct {
 	addr     string
 	password string
+	prefix   string
 }
 
 func main() {
@@ -92,7 +93,7 @@ func main() {
 	// Configure message stream
 	messageConfig := &SSEConfig{
 		redisClient: redisClient,
-		channelName: "game_evo_dev.messages",
+		channelName: fmt.Sprintf("%v.messages", redisConfig.prefix),
 		eventType:   "message",
 		unmarshaller: func(data []byte) (interface{}, error) {
 			var msg Message
@@ -104,7 +105,7 @@ func main() {
 	// Configure notification stream
 	notificationConfig := &SSEConfig{
 		redisClient: redisClient,
-		channelName: "game_evo_dev.notifications",
+		channelName: fmt.Sprintf("%v.notifications", redisConfig.prefix),
 		eventType:   "notification",
 		unmarshaller: func(data []byte) (interface{}, error) {
 			var notification InAppNotification
@@ -116,7 +117,7 @@ func main() {
 	// Configure friend request stream
 	friendRequestConfig := &SSEConfig{
 		redisClient: redisClient,
-		channelName: "game_evo_dev.friend_request",
+		channelName: fmt.Sprintf("%v.friend_request", redisConfig.prefix),
 		eventType:   "friend_request",
 		unmarshaller: func(data []byte) (interface{}, error) {
 			var friendRequest FriendRequest
@@ -127,7 +128,7 @@ func main() {
 
 	playerNotificationConfig := &SSEConfig{
 		redisClient: redisClient,
-		channelName: "game_evo_dev.player.notifications",
+		channelName: fmt.Sprintf("%v.player.notifications", redisConfig.prefix),
 		eventType:   "notification",
 		unmarshaller: func(data []byte) (interface{}, error) {
 			var notification Notification[any]
@@ -138,7 +139,7 @@ func main() {
 
 	playerMessageConfig := &SSEConfig{
 		redisClient: redisClient,
-		channelName: "game_evo_dev.player.messages",
+		channelName: fmt.Sprintf("%v.player.messages", redisConfig.prefix),
 		eventType:   "message",
 		unmarshaller: func(data []byte) (interface{}, error) {
 			var notification PlayerMessage
@@ -149,7 +150,7 @@ func main() {
 
 	// conversationConfig := &SSEConfig{
 	// 	redisClient: redisClient,
-	// 	channelName: "game_evo_dev.conversation",
+	// 	channelName: fmt.Sprintf("%v.conversation", redisConfig.prefix),
 	// 	eventType:   "conversation",
 	// 	unmarshaller: func(data []byte) (interface{}, error) {
 	// 		var friendRequest FriendRequest
@@ -200,6 +201,7 @@ func loadConfig(redisConfig *RedisConfig, authConfig *AuthConfig) {
 
 	redisConfig.addr = getEnvOrFileValue(envFile, "REDIS_ADDR")
 	redisConfig.password = getEnvOrFileValue(envFile, "REDIS_PASSWORD")
+	redisConfig.prefix = getEnvOrFileValue(envFile, "REDIS_PREFIX")
 
 	authConfig.secretKey = []byte(getEnvOrFileValue(envFile, "STREAM_SECRET"))
 }
