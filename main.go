@@ -82,7 +82,27 @@ type RedisConfig struct {
 	prefix   string
 }
 
+func setupLogging() {
+	// Create a new log file
+	file, err := os.OpenFile("game-evo.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	// Set the log output to the log file
+	log.SetOutput(file)
+
+	// Set log flags to include date and time
+	log.SetFlags(log.Ldate | log.Ltime)
+
+	// Log a sample message
+	log.Println("Logging started")
+}
+
 func main() {
+	setupLogging()
+
 	redisConfig := &RedisConfig{}
 	authConfig := &AuthConfig{}
 	loadConfig(redisConfig, authConfig)
