@@ -82,7 +82,10 @@ type RedisConfig struct {
 	prefix   string
 }
 
-func setupLogging() {
+var logger = log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+
+// func
+func main() {
 	// Create a new log file
 	file, err := os.OpenFile("game-evo.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
@@ -91,17 +94,13 @@ func setupLogging() {
 	defer file.Close()
 
 	// Set the log output to the log file
-	log.SetOutput(file)
+	logger.SetOutput(file)
 
 	// Set log flags to include date and time
-	log.SetFlags(log.Ldate | log.Ltime)
+	// log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
 	// Log a sample message
-	log.Println("Logging started")
-}
-
-func main() {
-	setupLogging()
+	logger.Println("Logging started")
 
 	redisConfig := &RedisConfig{}
 	authConfig := &AuthConfig{}
@@ -180,23 +179,23 @@ func main() {
 	// }
 
 	// Set up routes
-	http.HandleFunc("/stream/messages", createSSEHandler(messageConfig, authConfig))
-	http.HandleFunc("/stream/messages/conversations", createSSEHandler(messageConfig, authConfig))
-	http.HandleFunc("/stream/notifications", createSSEHandler(notificationConfig, authConfig))
-	http.HandleFunc("/stream/notifications/friend-requests", createSSEHandler(notificationConfig, authConfig))
-	http.HandleFunc("/stream/friend-requests", createSSEHandler(friendRequestConfig, authConfig))
+	// http.HandleFunc("/stream/messages", createSSEHandler(messageConfig, authConfig))
+	// http.HandleFunc("/stream/messages/conversations", createSSEHandler(messageConfig, authConfig))
+	// http.HandleFunc("/stream/notifications", createSSEHandler(notificationConfig, authConfig))
+	// http.HandleFunc("/stream/notifications/friend-requests", createSSEHandler(notificationConfig, authConfig))
+	// http.HandleFunc("/stream/friend-requests", createSSEHandler(friendRequestConfig, authConfig))
 	http.HandleFunc("/stream/player/notifications", createSSEHandler(playerNotificationConfig, authConfig))
 	http.HandleFunc("/stream/player/messages", createSSEHandler(playerMessageConfig, authConfig))
 
 	port := getEnvOrDefault("PORT", "8080")
-	log.Printf("Server starting on port %s", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
+	logger.Printf("Server starting on port %s", port)
+	logger.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
 
 func validateToken(tokenString string, config *AuthConfig) (*Claims, error) {
 	// For debugging
-	// log.Printf("Validating token: %s", tokenString)
-	// log.Printf("Using secret: %s", string(config.secretKey))
+	logger.Printf("Validating token: %s", tokenString)
+	logger.Printf("Using secret: %s", string(config.secretKey))
 
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -251,7 +250,9 @@ func newRedisClient(config RedisConfig) *redis.Client {
 
 func createSSEHandler(config *SSEConfig, authConfig *AuthConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		logger.Printf("Creating SSE handler for %s", config.channelName)
 		// Get token from query param
+
 		tokenString := r.URL.Query().Get("token")
 		if tokenString == "" {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -259,13 +260,15 @@ func createSSEHandler(config *SSEConfig, authConfig *AuthConfig) http.HandlerFun
 		}
 
 		claims, err := validateToken(tokenString, authConfig)
-		log.Printf("Error: %v", err)
+		logger.Printf("Error: %v", err)
 		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
 		userID := r.URL.Query().Get("uid")
+		logger.Printf("UserID: %s", userID)
+
 		if userID == "" {
 			http.Error(w, "Unprocessable entity", http.StatusUnprocessableEntity)
 			return
@@ -288,7 +291,7 @@ func createSSEHandler(config *SSEConfig, authConfig *AuthConfig) http.HandlerFun
 		}
 
 		// log the claims
-		log.Printf("Claims: %v", claims)
+		logger.Printf("Claims: %v", claims)
 
 		if !isSSESupported(r) {
 			http.Error(w, "SSE not supported", http.StatusNotAcceptable)
@@ -303,11 +306,11 @@ func createSSEHandler(config *SSEConfig, authConfig *AuthConfig) http.HandlerFun
 		// Monitor client connection
 		go func() {
 			<-ctx.Done()
-			log.Printf("Client disconnected from %s stream", config.eventType)
+			logger.Printf("Client disconnected from %s stream", config.eventType)
 		}()
 
 		if err := config.redisClient.Ping(ctx).Err(); err != nil {
-			log.Printf("Redis connection error: %v", err)
+			logger.Printf("Redis connection error: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -317,7 +320,7 @@ func createSSEHandler(config *SSEConfig, authConfig *AuthConfig) http.HandlerFun
 
 		// Send initial connection message
 		if err := sendSSEMessage(w, "connected", fmt.Sprintf("Connected to %s stream", config.eventType)); err != nil {
-			log.Printf("Failed to send initial message: %v", err)
+			logger.Printf("Failed to send initial message: %v", err)
 			return
 		}
 
@@ -335,7 +338,7 @@ func handleSSEStream(ctx context.Context, w http.ResponseWriter, pubsub *redis.P
 			return
 		case <-ticker.C:
 			if err := sendSSEComment(w, "keep-alive"); err != nil {
-				log.Printf("Failed to send keep-alive: %v", err)
+				logger.Printf("Failed to send keep-alive: %v", err)
 				return
 			}
 		case msg := <-pubsub.Channel():
@@ -347,12 +350,12 @@ func handleSSEStream(ctx context.Context, w http.ResponseWriter, pubsub *redis.P
 			default:
 				_, err := config.unmarshaller([]byte(msg.Payload))
 				if err != nil {
-					log.Printf("Failed to unmarshal %s: %v", config.eventType, err)
+					logger.Printf("Failed to unmarshal %s: %v", config.eventType, err)
 					continue
 				}
 
 				if err := sendSSEMessage(w, config.eventType, msg.Payload); err != nil {
-					log.Printf("Failed to send %s: %v", config.eventType, err)
+					logger.Printf("Failed to send %s: %v", config.eventType, err)
 					return
 				}
 			}
@@ -368,7 +371,7 @@ func handlePlayerNotificationStream(w http.ResponseWriter, config *SSEConfig, ms
 
 	err := json.Unmarshal([]byte(msg.Payload), &notification)
 	if err != nil {
-		log.Printf("Failed to unmarshal %s: %v", config.eventType, err)
+		logger.Printf("Failed to unmarshal %s: %v", config.eventType, err)
 		return
 	}
 
@@ -378,7 +381,7 @@ func handlePlayerNotificationStream(w http.ResponseWriter, config *SSEConfig, ms
 
 	if err := sendSSEMessage(w, notification.Type, msg.Payload); err != nil {
 
-		log.Printf("Failed to send %s: %v", config.eventType, err)
+		logger.Printf("Failed to send %s: %v", config.eventType, err)
 		return
 	}
 }
@@ -387,13 +390,13 @@ func handlePlayerMessageStream(w http.ResponseWriter, config *SSEConfig, msg *re
 	var message PlayerMessage
 	err := json.Unmarshal([]byte(msg.Payload), &message)
 	if err != nil {
-		log.Printf("Failed to unmarshal %s: %v", config.eventType, err)
+		logger.Printf("Failed to unmarshal %s: %v", config.eventType, err)
 		return
 	}
 
 	participantID, err := strconv.Atoi(playerID)
 	if err != nil {
-		log.Printf("Failed to convert playerID to int: %v", err)
+		logger.Printf("Failed to convert playerID to int: %v", err)
 		return
 	}
 
@@ -402,7 +405,7 @@ func handlePlayerMessageStream(w http.ResponseWriter, config *SSEConfig, msg *re
 	}
 
 	if err := sendSSEMessage(w, config.eventType, msg.Payload); err != nil {
-		log.Printf("Failed to send %s: %v", config.eventType, err)
+		logger.Printf("Failed to send %s: %v", config.eventType, err)
 		return
 	}
 }
