@@ -110,40 +110,40 @@ func main() {
 	defer redisClient.Close()
 
 	// Configure message stream
-	messageConfig := &SSEConfig{
-		redisClient: redisClient,
-		channelName: fmt.Sprintf("%v.messages", redisConfig.prefix),
-		eventType:   "message",
-		unmarshaller: func(data []byte) (interface{}, error) {
-			var msg Message
-			err := json.Unmarshal(data, &msg)
-			return msg, err
-		},
-	}
+	// messageConfig := &SSEConfig{
+	// 	redisClient: redisClient,
+	// 	channelName: fmt.Sprintf("%v.messages", redisConfig.prefix),
+	// 	eventType:   "message",
+	// 	unmarshaller: func(data []byte) (interface{}, error) {
+	// 		var msg Message
+	// 		err := json.Unmarshal(data, &msg)
+	// 		return msg, err
+	// 	},
+	// }
 
 	// Configure notification stream
-	notificationConfig := &SSEConfig{
-		redisClient: redisClient,
-		channelName: fmt.Sprintf("%v.notifications", redisConfig.prefix),
-		eventType:   "notification",
-		unmarshaller: func(data []byte) (interface{}, error) {
-			var notification InAppNotification
-			err := json.Unmarshal(data, &notification)
-			return notification, err
-		},
-	}
+	// notificationConfig := &SSEConfig{
+	// 	redisClient: redisClient,
+	// 	channelName: fmt.Sprintf("%v.notifications", redisConfig.prefix),
+	// 	eventType:   "notification",
+	// 	unmarshaller: func(data []byte) (interface{}, error) {
+	// 		var notification InAppNotification
+	// 		err := json.Unmarshal(data, &notification)
+	// 		return notification, err
+	// 	},
+	// }
 
 	// Configure friend request stream
-	friendRequestConfig := &SSEConfig{
-		redisClient: redisClient,
-		channelName: fmt.Sprintf("%v.friend_request", redisConfig.prefix),
-		eventType:   "friend_request",
-		unmarshaller: func(data []byte) (interface{}, error) {
-			var friendRequest FriendRequest
-			err := json.Unmarshal(data, &friendRequest)
-			return friendRequest, err
-		},
-	}
+	// friendRequestConfig := &SSEConfig{
+	// 	redisClient: redisClient,
+	// 	channelName: fmt.Sprintf("%v.friend_request", redisConfig.prefix),
+	// 	eventType:   "friend_request",
+	// 	unmarshaller: func(data []byte) (interface{}, error) {
+	// 		var friendRequest FriendRequest
+	// 		err := json.Unmarshal(data, &friendRequest)
+	// 		return friendRequest, err
+	// 	},
+	// }
 
 	playerNotificationConfig := &SSEConfig{
 		redisClient: redisClient,
