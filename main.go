@@ -109,42 +109,6 @@ func main() {
 	redisClient := newRedisClient(*redisConfig)
 	defer redisClient.Close()
 
-	// Configure message stream
-	// messageConfig := &SSEConfig{
-	// 	redisClient: redisClient,
-	// 	channelName: fmt.Sprintf("%v.messages", redisConfig.prefix),
-	// 	eventType:   "message",
-	// 	unmarshaller: func(data []byte) (interface{}, error) {
-	// 		var msg Message
-	// 		err := json.Unmarshal(data, &msg)
-	// 		return msg, err
-	// 	},
-	// }
-
-	// Configure notification stream
-	// notificationConfig := &SSEConfig{
-	// 	redisClient: redisClient,
-	// 	channelName: fmt.Sprintf("%v.notifications", redisConfig.prefix),
-	// 	eventType:   "notification",
-	// 	unmarshaller: func(data []byte) (interface{}, error) {
-	// 		var notification InAppNotification
-	// 		err := json.Unmarshal(data, &notification)
-	// 		return notification, err
-	// 	},
-	// }
-
-	// Configure friend request stream
-	// friendRequestConfig := &SSEConfig{
-	// 	redisClient: redisClient,
-	// 	channelName: fmt.Sprintf("%v.friend_request", redisConfig.prefix),
-	// 	eventType:   "friend_request",
-	// 	unmarshaller: func(data []byte) (interface{}, error) {
-	// 		var friendRequest FriendRequest
-	// 		err := json.Unmarshal(data, &friendRequest)
-	// 		return friendRequest, err
-	// 	},
-	// }
-
 	playerNotificationConfig := &SSEConfig{
 		redisClient: redisClient,
 		channelName: fmt.Sprintf("%v.player.notifications", redisConfig.prefix),
@@ -167,23 +131,7 @@ func main() {
 		},
 	}
 
-	// conversationConfig := &SSEConfig{
-	// 	redisClient: redisClient,
-	// 	channelName: fmt.Sprintf("%v.conversation", redisConfig.prefix),
-	// 	eventType:   "conversation",
-	// 	unmarshaller: func(data []byte) (interface{}, error) {
-	// 		var friendRequest FriendRequest
-	// 		err := json.Unmarshal(data, &friendRequest)
-	// 		return friendRequest, err
-	// 	},
-	// }
-
 	// Set up routes
-	// http.HandleFunc("/stream/messages", createSSEHandler(messageConfig, authConfig))
-	// http.HandleFunc("/stream/messages/conversations", createSSEHandler(messageConfig, authConfig))
-	// http.HandleFunc("/stream/notifications", createSSEHandler(notificationConfig, authConfig))
-	// http.HandleFunc("/stream/notifications/friend-requests", createSSEHandler(notificationConfig, authConfig))
-	// http.HandleFunc("/stream/friend-requests", createSSEHandler(friendRequestConfig, authConfig))
 	http.HandleFunc("/stream/player/notifications", createSSEHandler(playerNotificationConfig, authConfig))
 	http.HandleFunc("/stream/player/messages", createSSEHandler(playerMessageConfig, authConfig))
 
